@@ -1,0 +1,16 @@
+# ghc / cabal
+.ghc.environment.*
+dist/
+dist-newstyle/
+
+# RTS
+*.eventlog
+*.hp
+*.prof
+*.trace
+
+# app
+frontend.trace.test
+*.svg
+*.png
+*.json

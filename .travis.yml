@@ -1,0 +1,38 @@
+language: haskell
+ghc:
+  - 8.4.4
+  - 8.6.2
+cabal: 2.4
+
+install:
+  - export PATH=$HOME/.cabal/bin:$PATH &&
+    cabal new-update
+
+script:
+  - cabal new-test &&
+    gzip -cd frontend.json.gz |
+      cabal new-run -v0 jaeger-flamegraph -- -a p1 |
+      sort > frontend.trace.test &&
+    diff frontend.trace frontend.trace.test
+
+before_cache:
+  - rm -rf $HOME/.cabal/logs
+
+cache:
+  apt: true
+  directories:
+  - "$HOME/.ghcup"
+  - "$HOME/.cabal"
+
+notifications:
+  email: false
+
+deploy:
+  provider: hackage
+  username: fommil
+  password:
+    secure: PCs7nghTGpGicKnZbzR2uEG9AZKmnm+Y7NDCMPbyWIuFTefk5c2Ujo5HM0y91oUbx1jQdSREzyrJtg7HJqzJ1NWziJftNCcu852l4MfbL2pc5C+HWOwif40RT31M7o/7F/qOKv+Qy8aFfVlLDrqIWAy3niJdOjfD/aBa8rf4H5KFUM4uz4uf0IrN5adRrVQSoY+XF9LJAIyMrUNaGC3B05CeIGY63ZY9Ax1HMAMkGlognJUyAC/YRdjO9seNdVammwqzUV6jbXIFxMvzPJVBxGVeGNVpNORKJMBWUOSE8QsWfNBySVVtbmDBRWOhgpt0tryR+g4T0B2WnbIYSbJWc1GLcTryUR8PCuqmZdx+VYv2EtJFMY57/Lgm1bTI8oP2fc0n9PDX9iuPuO3B+US7Ij10+6XDKnuF6mhnjCRqJ609DnW88mwBo4l0aMHcUFTEnVQ9yd9XddzMTFcyuWwA0iO2a0KV+i0TZEd/XZutNIokNDXXszQhw0IOVc6bT1fTZ+X4OyQuftC15K2JZLsAAxzgL783sOIWyQvydydDUru/4YAohuOssrobQiY1NpV3TDl/kHh0lOLh5U9+BPTJSb2aVBHjpAx7EeRHNzED0uwuU+cdi+jDwQTMS2IhfxV0c7WE11fnlm00nZuyiO5MG4ppG5VxfEsyshogaMsXvEw=
+  on:
+    tags: true
+    repo: symbiont-io/jaeger-flamegraph
+    condition: $TRAVIS_HASKELL_VERSION = 8.4.4

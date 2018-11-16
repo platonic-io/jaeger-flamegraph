@@ -24,6 +24,10 @@ cache:
   - "$HOME/.ghcup"
   - "$HOME/.cabal"
 
+branches:
+  only:
+    - master
+
 notifications:
   email: false
 

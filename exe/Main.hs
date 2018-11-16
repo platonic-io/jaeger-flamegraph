@@ -9,8 +9,8 @@
 {-# LANGUAGE TupleSections              #-}
 
 import           Control.Applicative ((<|>))
-import           Data.Aeson          (FromJSON, eitherDecodeStrict, parseJSON,
-                                      withObject, (.:))
+import           Data.Aeson          (FromJSON, FromJSONKey, eitherDecodeStrict,
+                                      parseJSON, withObject, (.:))
 import qualified Data.ByteString     as BS
 import           Data.Foldable       (traverse_)
 import           Data.List           (intersect, nub, (\\))
@@ -34,13 +34,16 @@ main = do
             FileInput file -> BS.readFile file
             StdInput       -> BS.getContents
   Jaeger dat <- either fail pure $ eitherDecodeStrict text
-  let stacks = buildStacks ignoreTags annotated =<< (buildFlames . buildLookup $ dat)
+  let processes = if qualify then buildProcesses dat else Map.empty
+      spans = buildLookup dat
+      stacks = buildStacks ignoreTags annotated =<< buildFlames processes spans
   traverse_ (putStrLn . drawStack) stacks
 
 data Options = Options
   { input      :: Input
   , ignoreTags :: [Tag]
   , annotated  :: [ProcessID]
+  , qualify    :: Bool
   }
 data Input = FileInput FilePath | StdInput
 optionsParser :: Opts.Parser Options
@@ -48,6 +51,7 @@ optionsParser = Options
   <$> (file <|> pure StdInput)
   <*> Opts.many tag
   <*> Opts.many ann
+  <*> qual
   where
     file = FileInput <$> Opts.strOption
              (  Opts.long "file"
@@ -64,6 +68,10 @@ optionsParser = Options
              <> Opts.long "annotated"
              <> Opts.metavar "ANN"
              <> Opts.help "Annotate this process when using the `chain` palette")
+    qual = Opts.switch
+             (  Opts.short 'q'
+             <> Opts.long "qualify"
+             <> Opts.help "Qualify span names by their process")
 
 newtype Jaeger = Jaeger [Data]
 instance FromJSON Jaeger where
@@ -71,16 +79,22 @@ instance FromJSON Jaeger where
 
 newtype TraceID   = TraceID Text deriving newtype (Eq, Ord, FromJSON)
 newtype SpanID    = SpanID  Text deriving newtype (Eq, Ord, FromJSON)
-newtype ProcessID = ProcessID Text deriving newtype (Eq, FromJSON)
+newtype ProcessID = ProcessID Text deriving newtype (Eq, Ord, FromJSON, FromJSONKey)
 newtype Name      = Name { unName :: Text } deriving newtype (Eq, FromJSON)
 
 data Data = Data
-  { traceID :: TraceID
-  , spans   :: [Span]
+  { traceID   :: TraceID
+  , spans     :: [Span]
+  , processes :: Map.Map ProcessID Process
+  } deriving (Generic, FromJSON)
+
+data Process = Process
+  { serviceName :: Text
   } deriving (Generic, FromJSON)
 
 data Span = Span
   { spanID        :: SpanID
+  , traceID       :: TraceID
   , operationName :: Name
   , references    :: [Reference]
   , startTime     :: Integer
@@ -99,10 +113,18 @@ newtype Tag = Tag
   } deriving (Eq, Generic)
     deriving anyclass (FromJSON)
 
+type Processes = Map (TraceID, ProcessID) Process
+
+buildProcesses :: [Data] -> Processes
+buildProcesses dats = Map.fromList $
+  do Data{..} <- dats
+     (pid, p) <- Map.toList processes
+     pure ((traceID, pid), p)
+
 type Lookup = [(Reference, Span)]
 
 buildLookup :: [Data] -> Lookup
-buildLookup dat = do (Data t ss) <- dat
+buildLookup dat = do (Data t ss _) <- dat
                      do s @ Span{..} <- ss
                         pure (Reference t spanID, s)
 
@@ -127,8 +149,9 @@ selftime f = max 0 $ (width $ time f) - (measure $ time <$> children f)
 -- it impossible to treat spans as a flame graph or traditional stack trace,
 -- like you can in a single-parent world. This may make writing a GUI harder
 -- since you can't do certain flame-graph-like visualizations.
-buildFlames :: Lookup -> [Flame]
-buildFlames ss = build <$> (maybeToList . lookupSpan =<< (nub $ roots ++ orphans))
+buildFlames :: Processes -> Lookup -> [Flame]
+buildFlames procs ss = build <$>
+                       (maybeToList . lookupSpan =<< (nub $ roots ++ orphans))
   where
     roots :: [Reference]
     roots = fst <$> filter (\ (_, Span{..}) -> null references) ss
@@ -143,13 +166,16 @@ buildFlames ss = build <$> (maybeToList . lookupSpan =<< (nub $ roots ++ orphans
     lookupSpan :: Reference -> Maybe (Reference, Span)
     lookupSpan ref = (ref,) <$> (Map.lookup ref spans)
     build (i, Span{..}) = Flame (interval startTime (startTime + duration))
-                                operationName
+                                (qualifiedName operationName (traceID, processID))
                                 processID
                                 (build <$> deps i)
                                 tags
     deps i = do refs <- maybeToList $ Map.lookup i children
                 ref  <- refs
                 maybeToList $ lookupSpan ref
+    qualifiedName orig pid = case Map.lookup pid procs of
+      Nothing -> orig
+      Just p -> Name $ (unName orig) <> "..." <> (serviceName p)
 
 -- https://github.com/brendangregg/FlameGraph/blob/master/flamegraph.pl
 --

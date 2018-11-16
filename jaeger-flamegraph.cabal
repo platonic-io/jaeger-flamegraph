@@ -11,19 +11,16 @@ bug-reports:         https://github.com/symbiont-io/jaeger-flamegraph/pulls
 tested-with:         GHC ^>= 8.4.4 || ^>= 8.6.2
 category:            Testing
 description:
-  This is a small tool to convert JSON dumps obtained from a Jaeger
-  server (<https://www.jaegertracing.io/>) into a format consumable
+  This is a small tool to convert JSON dumps obtained from a [Jaeger
+  server] (https://www.jaegertracing.io/) into a format consumable
   by [FlameGraph](https://github.com/brendangregg/FlameGraph).
   .
-  First download the traces for your SERVICE limiting to LIMIT traces
+  Filter the traces for your SERVICE from the
+  [undocumented Jaeger API](https://github.com/jaegertracing/jaeger/issues/456).
   .
-  > $ curl http://your-jaeger-installation/api/traces?service=SERVICE&limit=LIMIT > input.json
-  .
-  using the [undocumented Jaeger API](https://github.com/jaegertracing/jaeger/issues/456#issuecomment-412560321)
-  then use @jaeger-flamegraph@ to convert the data and send to @flamegraph.pl@
-  .
-  > $ jaeger-flamegraph -f input.json | flamegraph.pl > output.svg
-  .
+  > $ curl http://jaeger/api/traces?service=SERVICE&limit=1000 |
+  >   jaeger-flamegraph |
+  >   flamegraph.pl > output.svg
 
 source-repository head
   type: git

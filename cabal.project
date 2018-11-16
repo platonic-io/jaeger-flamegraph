@@ -3,4 +3,5 @@ packages:
  ./
 
 optimization:  2
-constraints:   aeson +cffi
+package aeson
+  flags: +cffi 

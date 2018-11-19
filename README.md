@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/symbiont-io/jaeger-flamegraph.svg?branch=master)](https://travis-ci.org/symbiont-io/jaeger-flamegraph)
+
 Visualise [Jaeger](https://www.jaegertracing.io/) tracing data as a [flamegraph](http://www.brendangregg.com/flamegraphs.html).
 
 For example, the [HotROD](https://github.com/jaegertracing/jaeger/tree/master/examples/hotrod) demo can be visualised as

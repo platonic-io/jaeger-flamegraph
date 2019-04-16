@@ -3,6 +3,8 @@
 module Interval
   ( Interval
   , interval
+  , intervalStart
+  , intervalEnd
   , measure
   , width)
 where
@@ -11,8 +13,10 @@ import           Data.List                 (sort)
 import           Test.QuickCheck.Arbitrary (Arbitrary, arbitrary)
 
 -- nothing on http://hackage.haskell.org/packages/search?terms=interval
-data Interval = Interval Integer Integer   -- ^ assume from <= to
-                deriving (Eq, Ord, Show)
+data Interval = Interval
+  { intervalStart :: Integer -- ^ assume start <= end
+  , intervalEnd   :: Integer
+  } deriving (Eq, Ord, Show)
 
 interval :: Integer -> Integer -> Interval
 interval a b | a <= b    = Interval a b

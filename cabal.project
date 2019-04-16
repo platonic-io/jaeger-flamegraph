@@ -2,9 +2,5 @@
 packages:
  ./
 
-optimization:  2
-package *
-  optimization: 2
-
 package aeson
   flags: +cffi

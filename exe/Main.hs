@@ -22,7 +22,8 @@ import           Data.Maybe          (maybeToList)
 import           Data.Text           (Text, intercalate, map, pack)
 import           Data.Text.IO        (putStrLn)
 import           GHC.Generics        (Generic)
-import           Interval            (Interval, interval, measure, width)
+import           Interval            (Interval, interval, intervalEnd,
+                                      intervalStart, measure, width)
 import qualified Options.Applicative as Opts
 import           Prelude             hiding (map, putStrLn)
 
@@ -36,7 +37,8 @@ main = do
   Jaeger dat <- either fail pure $ eitherDecodeStrict text
   let processes = if qualify then buildProcesses dat else Map.empty
       spans = buildLookup dat
-      stacks = buildStacks ignoreTags annotated =<< buildFlames processes spans
+      stacks = buildFlames processes spans >>=
+             buildStacks wall ignoreTags annotated
   traverse_ (putStrLn . drawStack) stacks
 
 data Options = Options
@@ -44,6 +46,7 @@ data Options = Options
   , ignoreTags :: [Tag]
   , annotated  :: [ProcessID]
   , qualify    :: Bool
+  , wall       :: Bool
   }
 data Input = FileInput FilePath | StdInput
 optionsParser :: Opts.Parser Options
@@ -52,6 +55,7 @@ optionsParser = Options
   <*> Opts.many tag
   <*> Opts.many ann
   <*> qual
+  <*> wall
   where
     file = FileInput <$> Opts.strOption
              (  Opts.long "file"
@@ -72,6 +76,10 @@ optionsParser = Options
              (  Opts.short 'q'
              <> Opts.long "qualify"
              <> Opts.help "Qualify span names by their process")
+    wall = Opts.switch
+             (  Opts.short 'w'
+             <> Opts.long "walltime"
+             <> Opts.help "Takes start/end times of children into account when calculating times.")
 
 newtype Jaeger = Jaeger [Data]
 instance FromJSON Jaeger where
@@ -139,6 +147,13 @@ data Flame = Flame
 selftime :: Flame -> Integer
 selftime f = max 0 $ (width $ time f) - (measure $ time <$> children f)
 
+walltime :: Flame -> Integer
+walltime f = end' - start' - (measure $ time <$> children f)
+  where family = f : children f
+        -- only start/end times from immediate children to avoid accumulation
+        start' = minimum $ intervalStart . time <$> family
+        end'   = maximum $ intervalEnd . time <$> family
+
 -- We only support one parent per span.
 --
 -- https://github.com/opentracing/opentracing.io/issues/28
@@ -175,7 +190,7 @@ buildFlames procs ss = build <$>
                 maybeToList $ lookupSpan ref
     qualifiedName orig pid = case Map.lookup pid procs of
       Nothing -> orig
-      Just p -> Name $ (unName orig) <> "..." <> (serviceName p)
+      Just p  -> Name $ (unName orig) <> "..." <> (serviceName p)
 
 -- https://github.com/brendangregg/FlameGraph/blob/master/flamegraph.pl
 --
@@ -202,15 +217,16 @@ data Stack = Stack
   , annotated :: Bool
   }
 
-buildStacks :: [Tag] -> [ProcessID] -> Flame -> [Stack]
-buildStacks banned annotate = stacks []
+buildStacks :: Bool -> [Tag] -> [ProcessID] -> Flame -> [Stack]
+buildStacks wall banned annotate = stacks []
   where
     stacks :: [Name] -> Flame -> [Stack]
     stacks parents f @ Flame{..} =
       if not . null $ intersect banned tags
       then []
-      else Stack (name :| parents) (selftime f) (elem process annotate) :
+      else Stack (name :| parents) t (elem process annotate) :
            (stacks (name : parents) =<< children)
+           where t = if wall then walltime f else selftime f
 
 drawStack :: Stack -> Text
 drawStack Stack{..} = intercalate ";" (map cleanup . unName <$>

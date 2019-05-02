@@ -1,7 +1,7 @@
 module IntervalTest where
 
 import           Data.List        (nub, permutations)
-import           Interval
+import           Jaeger.Interval
 import           Test.Tasty.Hspec
 
 -- https://hspec.github.io/writing-specs.html

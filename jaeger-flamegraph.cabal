@@ -55,7 +55,7 @@ library
   hs-source-dirs:     library
   exposed-modules:    Jaeger.Interval
                     , Jaeger.Data
-  build-depends:    , QuickCheck ^>= 2.12.6.1
+  build-depends:    , QuickCheck ^>= 2.11.3 || ^>= 2.12.6.1
 
 test-suite            tests
   import:             deps

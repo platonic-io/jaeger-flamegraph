@@ -1,16 +1,11 @@
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE DuplicateRecordFields      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE StrictData                 #-}
-{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE StrictData            #-}
+{-# LANGUAGE TupleSections         #-}
 
 import           Control.Applicative ((<|>))
-import           Data.Aeson          (FromJSON, FromJSONKey, eitherDecodeStrict,
-                                      parseJSON, withObject, (.:))
+import           Data.Aeson          (eitherDecodeStrict)
 import qualified Data.ByteString     as BS
 import           Data.Foldable       (traverse_)
 import           Data.List           (intersect, nub, (\\))
@@ -21,9 +16,8 @@ import qualified Data.Map.Strict     as Map
 import           Data.Maybe          (maybeToList)
 import           Data.Text           (Text, intercalate, map, pack)
 import           Data.Text.IO        (putStrLn)
-import           GHC.Generics        (Generic)
-import           Interval            (Interval, interval, intervalEnd,
-                                      intervalStart, measure, width)
+import           Jaeger.Data
+import           Jaeger.Interval
 import qualified Options.Applicative as Opts
 import           Prelude             hiding (map, putStrLn)
 
@@ -43,7 +37,7 @@ main = do
 
 data Options = Options
   { input      :: Input
-  , ignoreTags :: [Tag]
+  , ignoreTags :: [Text]
   , annotated  :: [ProcessID]
   , qualify    :: Bool
   , wall       :: Bool
@@ -62,7 +56,7 @@ optionsParser = Options
              <> Opts.short 'f'
              <> Opts.metavar "FILENAME"
              <> Opts.help "Input file")
-    tag = Tag <$> Opts.strOption
+    tag = Opts.strOption
              (  Opts.short 'i'
              <> Opts.long "ignore"
              <> Opts.metavar "TAG-KEY"
@@ -80,46 +74,6 @@ optionsParser = Options
              (  Opts.short 'w'
              <> Opts.long "walltime"
              <> Opts.help "Takes start/end times of children into account when calculating times.")
-
-newtype Jaeger = Jaeger [Data]
-instance FromJSON Jaeger where
-  parseJSON = withObject "Jaeger" $ \v -> Jaeger <$> v .: "data"
-
-newtype TraceID   = TraceID Text deriving newtype (Eq, Ord, FromJSON)
-newtype SpanID    = SpanID  Text deriving newtype (Eq, Ord, FromJSON)
-newtype ProcessID = ProcessID Text deriving newtype (Eq, Ord, FromJSON, FromJSONKey)
-newtype Name      = Name { unName :: Text } deriving newtype (Eq, FromJSON)
-
-data Data = Data
-  { traceID   :: TraceID
-  , spans     :: [Span]
-  , processes :: Map.Map ProcessID Process
-  } deriving (Generic, FromJSON)
-
-data Process = Process
-  { serviceName :: Text
-  } deriving (Generic, FromJSON)
-
-data Span = Span
-  { spanID        :: SpanID
-  , traceID       :: TraceID
-  , operationName :: Name
-  , references    :: [Reference]
-  , startTime     :: Integer
-  , duration      :: Integer
-  , tags          :: [Tag]
-  , processID     :: ProcessID
-  } deriving (Generic, FromJSON)
-
-data Reference = Reference
-  { traceID :: TraceID
-  , spanID  :: SpanID
-  } deriving (Eq, Ord, Generic, FromJSON)
-
-newtype Tag = Tag
-  { key :: Text
-  } deriving (Eq, Generic)
-    deriving anyclass (FromJSON)
 
 type Processes = Map (TraceID, ProcessID) Process
 
@@ -141,7 +95,7 @@ data Flame = Flame
   , name     :: Name
   , process  :: ProcessID
   , children :: [Flame]
-  , tags     :: [Tag]
+  , tags     :: [Text]
   }
 
 selftime :: Flame -> Integer
@@ -184,13 +138,13 @@ buildFlames procs ss = build <$>
                                 (qualifiedName operationName (traceID, processID))
                                 processID
                                 (build <$> deps i)
-                                tags
+                                (key <$> tags)
     deps i = do refs <- maybeToList $ Map.lookup i children
                 ref  <- refs
                 maybeToList $ lookupSpan ref
-    qualifiedName orig pid = case Map.lookup pid procs of
-      Nothing -> orig
-      Just p  -> Name $ (unName orig) <> "..." <> (serviceName p)
+    qualifiedName (Name orig) pid = case Map.lookup pid procs of
+      Nothing -> Name orig
+      Just p  -> Name $ orig <> "..." <> (serviceName p)
 
 -- https://github.com/brendangregg/FlameGraph/blob/master/flamegraph.pl
 --
@@ -217,7 +171,7 @@ data Stack = Stack
   , annotated :: Bool
   }
 
-buildStacks :: Bool -> [Tag] -> [ProcessID] -> Flame -> [Stack]
+buildStacks :: Bool -> [Text] -> [ProcessID] -> Flame -> [Stack]
 buildStacks wall banned annotate = stacks []
   where
     stacks :: [Name] -> Flame -> [Stack]
@@ -229,7 +183,7 @@ buildStacks wall banned annotate = stacks []
            where t = if wall then walltime f else selftime f
 
 drawStack :: Stack -> Text
-drawStack Stack{..} = intercalate ";" (map cleanup . unName <$>
+drawStack Stack{..} = intercalate ";" ((\(Name n) -> map cleanup n) <$>
                                        (reverse . toList $ frames))
                       <> ann <> " " <> (pack . show $ samples)
   where cleanup ' ' = '.'

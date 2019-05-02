@@ -1,6 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Interval
+module Jaeger.Interval
   ( Interval
   , interval
   , intervalStart

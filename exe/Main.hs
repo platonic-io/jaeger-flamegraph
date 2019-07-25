@@ -8,7 +8,7 @@ import           Control.Applicative ((<|>))
 import           Data.Aeson          (eitherDecodeStrict)
 import qualified Data.ByteString     as BS
 import           Data.Foldable       (traverse_)
-import           Data.List           (intersect, nub, (\\))
+import           Data.List           (intersect, nub)
 import           Data.List.Extra     (groupSort)
 import           Data.List.NonEmpty  (NonEmpty ((:|)), toList)
 import           Data.Map.Strict     (Map)

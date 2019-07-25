@@ -13,6 +13,7 @@ import           Data.List.Extra     (groupSort)
 import           Data.List.NonEmpty  (NonEmpty ((:|)), toList)
 import           Data.Map.Strict     (Map)
 import qualified Data.Map.Strict     as Map
+import qualified Data.Set            as Set
 import           Data.Maybe          (maybeToList)
 import           Data.Text           (Text, intercalate, map, pack)
 import           Data.Text.IO        (putStrLn)
@@ -125,8 +126,9 @@ buildFlames procs ss = build <$>
     roots :: [Reference]
     roots = fst <$> filter (\ (_, Span{..}) -> null references) ss
     orphans :: [Reference]
-    orphans = do absent <- (Map.keys children) \\ (Map.keys spans)
-                 concat $ maybeToList $ Map.lookup absent children
+    orphans = Set.foldl' f [] absentees
+      where absentees  = Map.keysSet children `Set.difference` Map.keysSet spans
+            f os absent = maybe os (os ++) $ Map.lookup absent children
     spans :: Map Reference Span
     spans = Map.fromList ss
     children :: Map Reference [Reference]
